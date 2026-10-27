@@ -1,0 +1,35 @@
+name: Validate skill
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  static-and-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: tsbx/action-ffmpeg@v1
+        with:
+          version: '6.1'
+      - run: python -m pip install --disable-pip-version-check numpy
+      - name: Validate scripts
+        run: |
+          for file in scripts/*.sh; do bash -n "$file"; done
+          python -m py_compile scripts/*.py
+          node --check scripts/remotion-render-worker.cjs
+          node --check scripts/cvr-hyperframes-loader.mjs
+      - name: Run tests
+        working-directory: scripts
+        run: |
+          python -m unittest -v test_cvr.py test_parse_composition.py
+          python selftest-av-sync.py
