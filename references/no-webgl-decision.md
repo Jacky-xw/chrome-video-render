@@ -1,3 +1,5 @@
-# Backend notes
+# 后端说明
 
-Use the supplied browser launchers for CVR rendering. Do not replace them with a different graphics backend during a render. Canvas 2D, p5.js 2D and Manim are the supported 2D/2.5D choices. Backend audit is optional, not a per-render requirement.
+启动器负责视频浏览器的图形后端。2D/2.5D 项目使用 Canvas 2D、p5.js 2D 或 Manim。
+
+需要审计源码时，使用 `webgl-policy-check.py`；普通渲染不重复执行该扫描。

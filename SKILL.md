@@ -58,7 +58,7 @@ python3 -u /skills/chrome-video-render/scripts/remotion-segmented.py \
 | `--mode` | `quick` = cvr，`full` = rvc | 见第 2 节 |
 | `--input-props` | JSON 字符串 | 可选，传给 `selectComposition()` 与所有 `renderMedia()` |
 | `--segment-frames` | 整数 ≥5 | 可选，固定段长；省略则自适应（推荐省略） |
-| `--workers` | 正整数 | 可选，显式并行段数；省略由机器决定（推荐省略） |
+| `--workers` | 正整数 | 可选，显式并行段数；**OOM 时第一个降这里**，省略由机器决定 |
 
 HyperFrames 项目（项目本身已评审并确认使用 HyperFrames 时）：
 
@@ -77,7 +77,7 @@ HyperFrames 保留自己的时间轴、混音与 worker 体系，不使用 Remot
 | | `cvr`（`--mode quick`） | `rvc`（`--mode full`） |
 |---|---|---|
 | 用途 | 日常出片，默认用这个 | 诊断、发布前检查、要看细节 |
-| 启动 | 读物理大核数直接开跑，不做测速 | 每次重新测速短/长两套方案并覆盖方案文件（保留 history） |
+| 启动 | 读物理大核数直接开跑，不做测速 | 多跑 `render-env.sh --json` 环境探测，多做逐段解码校验，多打各阶段耗时汇总 |
 | 环境探测 | 不跑 `render-env.sh`，不查 npm/浏览器版本 | 跑 `render-env.sh --json`，输出浏览器/引擎/硬件报告 |
 | 分段校验 | 只验最终成片 | 逐段解码计数 + 整片完整解码 |
 | 音画同步 | `not-measured`，除非显式 `--sync-check` | 支持 `--sync-check` 标记法测量 |
@@ -106,6 +106,10 @@ HyperFrames 保留自己的时间轴、混音与 worker 体系，不使用 Remot
 流程：开进程 → 起 Chrome → 渲自己那一段 → 视频/音频写盘 → 写 `<NN>.json` 完成标记 → 进程退出 → Chrome 关闭。
 段与段之间除了磁盘文件没有任何共享状态，不会跨段累积内存和页面状态。
 多段并行，并行数 = worker 数，每段用 `taskset` 绑到专属大核，互不抢核。
+绑核前先实测能否绑定，绑不上则跳过，调度优化不会让渲染失败。
+
+quick 模式下分段进度行不打印（segment 阶段无进度输出），但每段完成后会有
+`CVR_SEGMENT_OK` 行；full 模式才打印 `CVR segment 01/4: frames 0-149`。
 
 **③ combine（合并出片）**
 独立进程读取已落盘的全部分段，`combineChunks()` 合成 PCM/MKV，
@@ -185,8 +189,9 @@ ls out/video.segments/                                     # 看具体完成到�
 
 - **worker 数来自机器，不写死。** 默认 = 芯片物理大核数；有实测方案文件时按方案；
   内存不足时再往下压。`--workers N` 单次显式覆盖，`--max-workers N` 设上限。
-- **物理大核数 ≠ 当前可调度大核数。** cgroup 掩码会抖动，所以上限按物理核算，
-  绑核用 `taskset` 实际验证；被屏蔽的核由 taskset 静默回退，不会因此失败。
+- **物理大核数 ≠ 当前可调度大核数。** cgroup 掩码会抖动，所以上限按物理核算。
+  每段绑核前先用 `taskset ... true` 实测能否绑定，**绑不上就回退不绑核继续渲染**——
+  调度优化不该让整段失败。被屏蔽的核由 taskset 静默回退，不会因此中断。
 - **每 worker 内存 = 浏览器固定开销 + 与分辨率成正比的帧缓冲。**
   有实测校准数据时用实测（`peak = baseline + slope × workers` 拟合），否则用估算。
 - **内存峰值 ≈ 并行段数 × 单段浏览器占用。** 所以 OOM 时第一动作是降 `--workers`。
@@ -231,6 +236,7 @@ ffprobe -v error -select_streams a:0 \
 
 | 现象 | 原因 | 处理 |
 |---|---|---|
+| `plan_error`：plan 阶段失败 | composition id 写错、entry 不存在、node_modules 缺依赖 | 核对 `--composition` 与项目入口文件，确认 `node_modules/remotion` 存在 |
 | `CVR_RENDER_FAILED ... "reason":"out_of_memory"`，或退出码 137 / -9 | 内存不足，并行段太多或别的进程占内存 | 降 `--workers`（如 4→2→1），关掉其他大内存进程后重跑；已完成段会保留 |
 | `Another CVR job holds ... .foreground.lock` | 同一项目同一 composition 有另一个渲染在跑 | 等它结束；确认已无渲染进程后可删该 `.lock` 文件再跑 |
 | `No Chrome detected` | 没 source 浏览器环境，或机器上没有 Chrome/Chromium | 先 `source /skills/chrome-video-render/scripts/video-browser-env.sh`；仍不行用 `--browser` 指定启动器 |

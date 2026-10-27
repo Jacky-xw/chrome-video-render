@@ -143,7 +143,7 @@ Checks that were run, and what each was meant to confirm:
 - **Foreground per-segment rendering** — a four-segment job ran as four independent segment processes, each with its own Chrome, followed by a separate combine process; the final file decoded at the expected frame count, FPS and duration with intact audio.
 - **Resume after interruption** — with all segments on disk, re-running the same command skipped every segment (`already done, skipping`) and went straight to combine, producing the same output.
 - **Manifest invalidation** — the `plan` stage writes `plan.json`, and stale segments are removed when the composition's frame count, FPS, dimensions or segment size change.
-- **Plan probing and overwrite** — `rvc` measuring a different winner than a previous run replaces the stored plan and records the change in `history`.
+- **Plan probing and overwrite** — running with `--measure` and finding a different winner than a previous run replaces the stored plan and records the change in `history`.
 - **Bundle cache** — a cold run versus a cache-hit run, and a content edit invalidating the cache while a metadata-only touch does not.
 - **Memory estimate** — the per-worker estimate scales with resolution instead of returning a constant for every size.
 
